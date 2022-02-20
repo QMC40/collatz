@@ -5,19 +5,19 @@
 #include <cstdlib>
 #include <sys/fcntl.h>
 #include <string>
-#include <semaphore.h>
 
 void kidz();
+
 void collatz(int num);
+
 int getNum();
 
-int min,max;
-sem_t next;     //semaphore for picking numbers
+int min, max;
 
 
 int main(int argc, char *argv[]) {
 
-    int n, record, index, p, semid;
+    int n, record;
 
     //getting entering args into vars
     if (argc < 3) {
@@ -31,7 +31,6 @@ int main(int argc, char *argv[]) {
         printf("command line arguments must be positive integers, please try again.\n");
         return 1;
     }
-
     printf("n: %d min: %d max: %d\n", n, min, max);
 
     pid_t parentPid = getpid(), childPid = 0;
@@ -39,23 +38,24 @@ int main(int argc, char *argv[]) {
     printf("parent is: %d\n", parentPid);
 
     //open file to write results too
-    if ((record = open("data.txt", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) == -1) { perror
-    ("data file failed to open"); }
+    if ((record = open("data.txt", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) == -1) {
+        perror("data file failed to open");
+    }
 
-//    int oldOut = STDOUT_FILENO;
-//    dup2(record,STDOUT_FILENO);
     //write range into file to be accessed by child processes
-    for(int i = min ; i <= max ; i++) {
-        write(record,&i,sizeof(int));
+    int buff;
+    for (int i = min; i <= max; i++) {
+        write(record, &i, 4);
+        read(record, &buff, 4);
     }
-    for(int i = min ; i <= max ; i++) {
-        int buff;
-        read(record,&buff, sizeof(int));
-        printf("%d\n",buff);
-    }
+    //rewind offset to first byte of file, could also just close and reopen file...
+    lseek(record, 0, SEEK_SET);
 
+//    for (int i = min; i <= max; i++) {
+//        read(record, &buff, 4);
+//        printf("buff = %d\n", buff);
+//    }
 
-    sem_init(&next,3,1);
 
     for (int i = 0; i < n; i++) {
         if ((childPid = fork()) <= 0) {
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
                 printf("fork failed!\n");
                 return 1;
             } else {
-                kidz();
+//                kidz();
                 break;
             }
         }
@@ -79,7 +79,6 @@ int main(int argc, char *argv[]) {
         perror("data file failed to close");
     }
 
-    sem_destroy(&next);
     return 0;
 }
 
@@ -109,11 +108,7 @@ void collatz(int num) {
 }
 
 int getNum() {
-    int queue;
-    printf("in getNum: %d \n",sem_getvalue(&next,&queue));
-    sem_wait(&next);
-    printf("getNum min: %d\n",min);
-    while(min <= max) { return min++; }
-    sem_post(&next);
+    printf("getNum min: %d\n", min);
+    while (min <= max) { return min++; }
     return -1;
 }
