@@ -9,17 +9,11 @@
 #include <cmath>
 
 void collatz(int num, int Fd);
-
 int getNum(int Fd);
-
 int fileOpener(const std::string &myFile, int modeSelector = 1);
-
 std::string nameMaker(pid_t subject, pid_t parent);
-
 void fileClose(int Fd);
-
 void resultDispenser(pid_t children[],int n);
-
 void filePrinter(int Fd);
 
 enum ModeSelector {
@@ -40,11 +34,15 @@ int main(int argc, char *argv[]) {
     n = atoi(argv[1]);
     min = atoi(argv[2]);
     max = atoi(argv[3]);
-    if (n <= 0 || min <= 0 || max <= 0) {
+    if (n <= 0 || min < 0 || max <= 0) {
         printf("command line arguments must be positive integers, please try again.\n");
         return 1;
     } else if (n > 10) {
         printf("number of processes cannot exceed 10, please try again.\n");
+        return 1;
+    } else if (max < min) {
+        printf("mininum of range should be less than maximum, please try again");
+        return 1;
     }
 
     //collecting job numbers for individual processes
@@ -52,6 +50,8 @@ int main(int argc, char *argv[]) {
     , smShare = 0, bigShare = 1, smBite = 0, bigBite = 1;
     //check if single process requested, otherwise do the math
     if (n > 1) {
+        //adjust min if 0 to correct short calculation of range for sequences
+        min = ((min == 0) ? 1 : min),
         range = (max + 1 - min),
         leaders = (int) (ceil((double) n / 2)),
         followers = n - leaders,
@@ -114,6 +114,7 @@ int main(int argc, char *argv[]) {
 
         //set task list
         int stop = 0, low = max, high = min;
+        //segregate first 50% of processes and assign stop # as appropriate
         if (myNumber <= leaders) {
             stop = (bigBite > 0) ? bigBite : 1;
         } else {
@@ -123,49 +124,45 @@ int main(int argc, char *argv[]) {
         //children do their assigned number of sequences
         for (int i = 0; i < stop; i++) {
             int num;
+            //get next number on the list
             num = getNum(numberPool);
+            //set low point of processes assigned range
             low = (num < low) ? num : low;
+            //set high point
             high = (high < num) ? num : high;
-            if (num > 1 && num <= max) {
+            if (num >= 1 && num <= max) {
                 collatz(num, record);
             }
-
+            //adjust low to 1 if range entered as zero
+            low = (low == 0) ? 1 : low;
         }
         fileClose(record);
         printf("I am child number %ld, my parent is %ld, "
                "I computed the Collatz sequence for numbers from %d to %d\n",
                (long) getpid(), (long) getppid(), low, high);
-    }
 
-    //close file used for issuing numbers to children
-    fileClose(numberPool);
+        //close file used for issuing numbers to children
+        fileClose(numberPool);
 
-    if (getpid() == parentPid) {
+    } else {
     //parent waits for children to finish
-    while (wait(nullptr) >= 0) {}
-
+    sleep(1);
     printf("\nProcesses completing: \n");
-
-        int tails = n;
         int status;
         pid_t pid;
-        while (tails > 0) {
-            pid = wait(&status);
+        for (int i = 0; i < n; i++) {
+            pid = waitpid(children[i], &status, 0);
             printf("Process that has PID %ld exited with status 0x%x.\n", (long) pid, status);
-            --tails;
         }
+        printf("\nResults:\n");
+        sleep(1);
         resultDispenser(children,n);
     }
-
-
-
-
     return 0;
 }
 
 //conducts collatz sequence with supplied seed value and writes it to file / console
 void collatz(int num, int Fd) {
-//    printf("%d ", num);
     write(Fd, &num, 4);
     while (num > 1) {
         if (num % 2 == 0) {
@@ -174,11 +171,7 @@ void collatz(int num, int Fd) {
             num = 3 * (num) + 1;
         }
         write(Fd, &num, 4);
-//        write(Fd," ",4);
-//        printf("%d ", num);
     }
-//    write(Fd,"\0",4);
-//    printf("\n");
 }
 
 //collects a seed number off the script file and returns it
