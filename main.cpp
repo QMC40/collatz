@@ -7,6 +7,7 @@
 #include <string>
 #include <cstring>
 #include <cmath>
+#include <limits.h>
 
 void collatz(int num, int Fd);
 int getNum(int Fd);
@@ -22,11 +23,8 @@ enum ModeSelector {
 
 int main(int argc, char *argv[]) {
 
-    int n = 1, min = 0, max = 0, myNumber = 0;
-
-    pid_t parentPid = getpid();
-
     //getting entering args into vars
+    int n = 1, min = 0, max = 0, myNumber = 0;
     if (argc < 3) {
         fprintf(stderr, "missing command line arguments, please try again.\n");
         return 1;
@@ -68,14 +66,19 @@ int main(int argc, char *argv[]) {
 //           range, leaders, smShare, bigShare,
 //           bigBite, smBite, (leaders * bigBite) + (followers * smBite));
 
+    char filename[] = "numberPool_temp_file_XXXXXX";
+    int fd;
+
+
     //creates / opens file for number pool / results and populated it
     int numberPool = 0;
-    numberPool = fileOpener("number_Pool.dat", READWRITE);
+    numberPool = mkstemp(filename);
+//    numberPool = fileOpener("number_Pool.dat", READWRITE);
 
     //write range into file to be accessed by child processes
     for (int i = min; i <= max; i++) {
         if (write(numberPool, &i, 4) == -1) {
-            perror("write failed");
+            perror("number pool write failed");
             exit(EXIT_FAILURE);
         }
     }
@@ -143,6 +146,7 @@ int main(int argc, char *argv[]) {
 
         //close file used for issuing numbers to children
         fileClose(numberPool);
+        unlink(filename);
 
     } else {
     //parent waits for children to finish
@@ -155,7 +159,6 @@ int main(int argc, char *argv[]) {
             printf("Process that has PID %ld exited with status 0x%x.\n", (long) pid, status);
         }
         printf("\nResults:\n");
-        sleep(1);
         resultDispenser(children,n);
     }
     return 0;
