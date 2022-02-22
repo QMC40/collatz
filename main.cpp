@@ -10,24 +10,25 @@
 
 void collatz(int num, int Fd);
 
-int getNum(int Fd, int max);
+int getNum(int Fd);
 
-int fileOpener(int fileSelector, int modeSelector = 1);
+int fileOpener(const std::string& myFile, int modeSelector = 1);
+
+std::string nameMaker(pid_t subject,pid_t parent);
 
 void fileClose(int Fd);
 
-void filePrinter(int Fd, int min, int max);
+void filePrinter(int Fd);
 
 enum ModeSelector {
     READ, WRITE, READWRITE
-};
-enum FileSelector {
-    INPUT, OUTPUT
 };
 
 int main(int argc, char *argv[]) {
 
     int n = 0, min = 0, max = 0, myNumber = 0;
+
+    pid_t parentPid = getpid();
 
     //getting entering args into vars
     if (argc < 3) {
@@ -63,14 +64,14 @@ int main(int argc, char *argv[]) {
 
     //creates / opens file for number pool / results and populated it
     int numberPool = 0;
-    numberPool = fileOpener(INPUT, READWRITE);
+    numberPool = fileOpener("number_Pool.dat",READWRITE);
 
     //write range into file to be accessed by child processes
     for (int i = min; i <= max; i++) {
         if (write(numberPool, &i, 4) == -1) {
             perror("write failed");
             exit(EXIT_FAILURE);
-        };
+        }
     }
 
     //put number pool file in read only mode and rewind it back to start
@@ -82,10 +83,9 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    //creates / opens file for sequence results from child processes
-    int record = fileOpener(OUTPUT,WRITE);
 
-    pid_t parentPid = getpid();
+
+
 
     printf("Creating %d processes:\n", n);
 
@@ -103,8 +103,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
+
     //screen children out and set their task count "stop"
     if (myNumber > 0) {
+        //creates / opens file for sequence results from child processes
+        int record = fileOpener(nameMaker((long)getpid(),(long)getppid()),
+                                READWRITE);
+
+        //set task list
         int stop = 0, low = max, high = min;
         if (myNumber <= leaders) {
             stop = bigBite;
@@ -112,11 +118,10 @@ int main(int argc, char *argv[]) {
             stop = smBite;
         }
 
-
         //children do their assigned number of sequences
         for (int i = 0; i < stop; i++) {
             int num;
-            num = getNum(numberPool, max);
+            num = getNum(numberPool);
             low = (num < low) ? num : low;
             high = (high < num) ? num : high;
             if (num > 1 && num <= max) {
@@ -124,12 +129,13 @@ int main(int argc, char *argv[]) {
             }
 
         }
+        fileClose(record);
         printf("I am child number %ld, my parent is %ld, "
                "I computed the Collatz sequence for numbers from %d to %d\n",
                (long) getpid(), (long) getppid(), low, high);
     }
 
-    //close
+    //close file used for issuing numbers to children
     fileClose(numberPool);
 
     //cutoff for children
@@ -139,11 +145,12 @@ int main(int argc, char *argv[]) {
     while (wait(nullptr) >= 0) {}
 
     if (getpid() == parentPid) {
-        printf("Parent %ld process is completed.\n", (long) getpid());
-//        for (int i = 0; i < n; i++) {
-//            printf("%d\n", children[i]);
-//        }
-        filePrinter(record,0,25);
+        for (int i = 0; i < n; i++) {
+            std::string name = nameMaker(children[i],getpid());
+            int childFile = fileOpener(name,READ);
+            filePrinter(childFile);
+            fileClose(childFile);
+        }
     }
     return 0;
 }
@@ -167,18 +174,23 @@ void collatz(int num, int Fd) {
 }
 
 //collects a seed number off the script file and returns it
-int getNum(int Fd, int max) {
+int getNum(int Fd) {
     int buff;
     read(Fd, &buff, 4);
     return buff;
 }
 
+//make name file out of pid supplied
+std::string nameMaker(pid_t subject,pid_t parent) {
+    return "results_"+std::to_string(subject)+"_"+
+                         std::to_string(parent);
+}
+
 //opens file and checks for error
-int fileOpener(int fileSelector, int modeSelector) {
+int fileOpener(const std::string& myFile,int modeSelector) {
     int Fd, openFlags, filePerms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP |
                                    S_IROTH | S_IWOTH; /* rw-rw-rw- */
-    const char *fileName = (fileSelector) ? "results_Childpid_Parentpid.dat"
-                                            : "number_Pool.dat";
+
     switch (modeSelector) {
         case READWRITE: {
             openFlags =  O_RDWR | O_CREAT | O_TRUNC;
@@ -197,9 +209,9 @@ int fileOpener(int fileSelector, int modeSelector) {
             break;
         }
     }
-    if ((Fd = open(fileName, openFlags, filePerms)) == -1) {
+    if ((Fd = open(myFile.c_str(), openFlags, filePerms)) == -1) {
         perror("data file failed to open");
-        printf("File: %s", fileName);
+        printf("File: %s", myFile.c_str());
         exit(EXIT_FAILURE);
     }
     return Fd;
@@ -214,7 +226,7 @@ void fileClose(int Fd) {
 }
 
 //utility for printing out file contents for testing
-void filePrinter(int Fd, int min, int max) {
+void filePrinter(int Fd) {
     int buff = 0;
     ssize_t  numRead = 0;
     while((numRead = read(Fd, &buff, 4)) > 0) {
